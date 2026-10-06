@@ -22,7 +22,7 @@
   },
   "scripts": {
     "test": "node server.js -env local",
-    "start": "node server.js -env local",
+    "start": "node server/main.js 2026 2026 http",
     "format": "prettier --write \"**/*.{js,json,md,html,css}\"",
     "convert": "gltf-import-export"
   },

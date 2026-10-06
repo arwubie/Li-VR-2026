@@ -46,15 +46,37 @@ export async function loadSound(url, bufferSetter) {
 }
 
 
-export function playSoundAtPosition(buffer, position) {
+export function playSoundAtPosition(buffer, position, playbackRate = 1,
+                                    durationSeconds = 0) {
+    if (!buffer || !resonanceSource)
+        return null;
     audioContext.resume();
     const source = audioContext.createBufferSource();
     source.buffer = buffer;
+    source.playbackRate.value = playbackRate;
     resonanceSource.setPosition(position[0], position[1], position[2]);
+    if (durationSeconds > 0) {
+        const gain = audioContext.createGain();
+        const now = audioContext.currentTime;
+        // Never loop the complete piano sample to fake a longer note. Doing so
+        // repeats its attack and sounds like a second note at a later beat.
+        const naturalDuration = buffer.duration / playbackRate;
+        const audibleDuration = Math.min(durationSeconds, naturalDuration);
+        const end = now + audibleDuration;
+        gain.gain.setValueAtTime(1, now);
+        gain.gain.setValueAtTime(1, Math.max(now, end - 0.03));
+        gain.gain.linearRampToValueAtTime(0, end);
+        source.connect(gain);
+        gain.connect(resonanceSource.input);
+        source.start(0);
+        source.stop(end);
+        console.log('Sound Played');
+        return source;
+    }
     source.connect(resonanceSource.input);
     source.start(0);
     console.log('Sound Played');
-
+    return source;
 }
 
 // play looping sounds

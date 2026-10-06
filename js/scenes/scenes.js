@@ -16,6 +16,7 @@ export default () => {
          { name: "hw2-airbeat" , path: "./hw2-airbeat.js" , public: true },
          { name: "beamSphere"  , path: "./beamSphere.js"  , public: true },
          { name: "construct"   , path: "./construct.js"   , public: true },
+         { name: "hw3-musicStaff"  , path: "./hw3-collaborativeMusic.js", public: true },
       ]
    };
 }

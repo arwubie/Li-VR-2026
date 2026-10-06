@@ -337,6 +337,20 @@ try {
    var websockets = [];
    var clients = [];
 
+   // ws@0.8 throws when send() races with a socket that is closing.
+   // A headset refresh or two browser tabs closing together must not crash
+   // the relay, otherwise the remaining clients silently stop syncing.
+   let safeSend = (socket, data) => {
+      if (!socket || socket.readyState !== 1)
+         return;
+      try {
+         socket.send(data);
+      }
+      catch (error) {
+         console.log('WebSocket send skipped:', error.message);
+      }
+   };
+
    wss.on("connection", function(ws) {
 
       ws.index = websockets.length;
@@ -349,15 +363,14 @@ try {
       let sendClients = () => {
          let data = JSON.stringify({ global: "clients", value: clients });
          for (var index = 0 ; index < websockets.length ; index++)
-            if (websockets[index])
-               websockets[index].send(data);
+            safeSend(websockets[index], data);
       }
       sendClients();
 
       ws.on("message", data => {
          for (var index = 0 ; index < websockets.length ; index++)
             if (websockets[index] && index != ws.index)
-               websockets[index].send(data);
+               safeSend(websockets[index], data);
 	 if (readHeader(data) == 'CTdata01') {
 	    holojam.Send(holojam.BuildUpdate('ChalkTalk', [{
 	       label: 'Display',
