@@ -1,16 +1,4 @@
-/*
-   Collaborative VR Music Staff
 
-   This scene deliberately follows the message-passing pattern in construct.js:
-      1. Initialize one global state object.
-      2. Send small operation messages for create / move / delete / play.
-      3. Apply messages from every client in server.sync().
-      4. Render the scene from the synchronized state.
-
-   Notes can be manipulated with either controller beam (as in beamSphere.js)
-   or a desktop mouse.  Releasing a note over the staff snaps it to a fixed
-   time/pitch grid.  The same score is visible and playable on every client.
-*/
 
 import * as cg from "../render/core/cg.js";
 import { lcb, rcb } from "../handle_scenes.js";
@@ -38,6 +26,8 @@ const BEAT_SPACING = (STAFF_RIGHT - STAFF_LEFT) / (BEAT_COUNT - 1);
 const PITCH_SPACING = (STAFF_TOP - STAFF_BOTTOM) / (PITCH_COUNT - 1);
 const NOTE_RADIUS = 0.038;
 const BPM = 100;
+const DISPLAY_SCALE = 0.90;
+const DISPLAY_CENTER_Y = 1.32;
 
 // Assignment pitch layout, ordered strictly from bottom to top.
 // The bottom line starts at middle C (C4 / do), and every line or space
@@ -348,8 +338,18 @@ export const init = async model => {
    lastPlayedBeat = -1;
    currentPlaybackBeat = -1;
 
-   let staticScene = model.add();
-   let dynamicScene = model.add();
+   // Keep the complete interface together so it can be made slightly smaller
+   // without changing any of its internal layout or interaction coordinates.
+   let sceneRoot = model.add()
+      .move(0, DISPLAY_CENTER_Y, 0)
+      .scale(DISPLAY_SCALE)
+      .move(0, -DISPLAY_CENTER_Y, 0);
+   let staticScene = sceneRoot.add();
+   let dynamicScene = sceneRoot.add();
+
+   // A single white backdrop frames the full staff, controls, and instructions.
+   staticScene.add('cube').move(0, DISPLAY_CENTER_Y, STAFF_Z - 0.075)
+      .scale(0.96, 0.74, 0.012).color(1, 1, 1).dull();
 
    // A nearly invisible plane is used by both controller beams and mouse rays.
    let interactionPlane = staticScene.add('square')
@@ -431,16 +431,22 @@ export const init = async model => {
    // Convert shared scene positions to the local headset coordinate system,
    // exactly as construct.js does for positional audio.
    let toHeadsetPos = pos => {
-      let emptyObj = model.add().move(pos);
+      let emptyObj = sceneRoot.add().move(pos);
       let objMatrix = emptyObj.getGlobalMatrix();
       let newPos = objMatrix.slice(12, 15);
-      model.remove(emptyObj);
+      sceneRoot.remove(emptyObj);
       return newPos;
    };
 
+   let toScenePos = pos => pos
+      ? cg.mTransform(cg.mInverse(sceneRoot.getGlobalMatrix()), pos)
+      : null;
+
    let beamPoint = hand => {
       let beam = hand == 'left' ? lcb : rcb;
-      return beam ? beam.hitPoint(interactionPlane.getGlobalMatrix(), true) : null;
+      return beam
+         ? toScenePos(beam.hitPoint(interactionPlane.getGlobalMatrix(), true))
+         : null;
    };
 
    // CONTROLLER EVENTS: SAME PRESS / DRAG / RELEASE SHAPE AS construct.js,
@@ -481,8 +487,10 @@ export const init = async model => {
       let a = unproject(-1), b = unproject(1);
       if (! a || ! b || Math.abs(b[2] - a[2]) < 0.00001)
          return null;
-      let t = (STAFF_Z + 0.025 - a[2]) / (b[2] - a[2]);
-      return cg.mix(a, b, t);
+      let targetZ = cg.mTransform(sceneRoot.getGlobalMatrix(),
+                                  [0, 0, STAFF_Z + 0.025])[2];
+      let t = (targetZ - a[2]) / (b[2] - a[2]);
+      return toScenePos(cg.mix(a, b, t));
    };
 
    let isMouseDown = false;
