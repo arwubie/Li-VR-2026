@@ -17,6 +17,7 @@ export default () => {
          { name: "beamSphere"  , path: "./beamSphere.js"  , public: true },
          { name: "construct"   , path: "./construct.js"   , public: true },
          { name: "hw3-musicStaff"  , path: "./hw3-collaborativeMusic.js", public: true },
+         { name: "aiquery"   , path: "./aiquery.js"   , public: true },
       ]
    };
 }
