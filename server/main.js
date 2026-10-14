@@ -1,5 +1,11 @@
 var bodyParser = require("body-parser");
 var express = require("express");
+var os = require("os");
+
+// formidable 1.0.17 uses the pre-Node-7 name `os.tmpDir()`. Keep the old
+// dependency working on Node 18 without modifying node_modules or lock files.
+if (typeof os.tmpDir !== "function") os.tmpDir = os.tmpdir;
+
 var formidable = require("formidable");
 var fs = require("fs");
 var http = require("http");
@@ -20,6 +26,8 @@ ttData = [];
 
 
 const { spawn } = require('child_process');
+const aiBuilder = require('./ai-builder.js');
+const codexBuilder = require('./codex-builder.js');
 
 var gbr = 0;
 var gbp = [];
@@ -45,6 +53,8 @@ var openAISharedState = {
    lastModel: "gpt-5.1",
    lastError: ""
 };
+var aiBuilderBusy = false;
+var codexBuilderBusy = false;
 
 var app = express();
 var port = process.argv[2] || 8000;
@@ -628,6 +638,77 @@ app.route("/api/aiquery").post(function(req, res) {
 
 app.route("/api/aiquery/state").get(function(req, res) {
    res.json(openAISharedState);
+});
+
+// Generate a validated block-building plan with the authenticated OpenCode CLI.
+// The model never returns executable code to the browser: this route expands its
+// small, whitelisted planning language into bounded place/remove/replace actions.
+app.route("/api/ai-builder").post(async function(req, res) {
+   if (aiBuilderBusy) {
+      return res.status(429).json({
+         error: "AI Builder is already handling another request",
+         details: "Wait for the current build plan to finish, then try again."
+      });
+   }
+
+   aiBuilderBusy = true;
+   const startedAt = Date.now();
+   try {
+      const result = await aiBuilder.generatePlan(req.body);
+      console.log(
+         `[AI Builder] request=${result.requestId} model=${result.model} ` +
+         `actions=${result.actions.length} attempts=${result.attempts} durationMs=${Date.now() - startedAt}`
+      );
+      res.json(result);
+   } catch (error) {
+      const status = error && error.isRequestError ? 400
+                   : error && error.isModelError ? 502
+                   : 500;
+      console.error(`[AI Builder] failed after ${Date.now() - startedAt}ms:`, error.message);
+      res.status(status).json({
+         error: status === 400 ? "Invalid AI Builder request"
+              : status === 502 ? "AI Builder model returned an invalid plan"
+              : "AI Builder request failed",
+         details: error.message
+      });
+   } finally {
+      aiBuilderBusy = false;
+   }
+});
+
+// Codex-powered copy of AI Builder. It uses the server's existing Codex login
+// with GPT-5.6 Luna, then applies the same bounded plan validation as AI Builder.
+app.route("/api/codex-builder").post(async function(req, res) {
+   if (codexBuilderBusy) {
+      return res.status(429).json({
+         error: "Codex Builder is already handling another request",
+         details: "Wait for the current build plan to finish, then try again."
+      });
+   }
+
+   codexBuilderBusy = true;
+   const startedAt = Date.now();
+   try {
+      const result = await codexBuilder.generatePlan(req.body);
+      console.log(
+         `[Codex Builder] request=${result.requestId} model=${result.model} ` +
+         `actions=${result.actions.length} attempts=${result.attempts} durationMs=${Date.now() - startedAt}`
+      );
+      res.json(result);
+   } catch (error) {
+      const status = error && error.isRequestError ? 400
+                   : error && error.isModelError ? 502
+                   : 500;
+      console.error(`[Codex Builder] failed after ${Date.now() - startedAt}ms:`, error.message);
+      res.status(status).json({
+         error: status === 400 ? "Invalid Codex Builder request"
+              : status === 502 ? "Codex Builder model returned an invalid plan"
+              : "Codex Builder request failed",
+         details: error.message
+      });
+   } finally {
+      codexBuilderBusy = false;
+   }
 });
 
 // Save a scene file (restricted to js/scenes/*.js)

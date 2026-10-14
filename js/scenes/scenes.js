@@ -18,6 +18,9 @@ export default () => {
          { name: "construct"   , path: "./construct.js"   , public: true },
          { name: "hw3-musicStaff"  , path: "./hw3-collaborativeMusic.js", public: true },
          { name: "aiquery"   , path: "./aiquery.js"   , public: true },
+         { name: "ai-builder", path: "./ai-builder.js", public: true },
+         { name: "ai-builder-codex", path: "./ai-builder-codex.js", public: true },
+         { name: "simon"    , path: "./simon.js"    , public: true },
       ]
    };
 }
