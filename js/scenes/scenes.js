@@ -21,6 +21,9 @@ export default () => {
          { name: "ai-builder", path: "./ai-builder.js", public: true },
          { name: "ai-builder-codex", path: "./ai-builder-codex.js", public: true },
          { name: "simon"    , path: "./simon.js"    , public: true },
+         { name: "SO101"      , path: "./SO101.js"      , public: true },
+         { name: "SO101_parts", path: "./SO101_parts.js", public: true },
+
       ]
    };
 }
