@@ -11,6 +11,7 @@ import { CodeEditor } from "./codeEditor.js";
 import * as keyboardInput from "../../util/input_keyboard.js";
 import { G2 } from "../../util/g2.js";
 import { linefont } from "./linefont.js";
+import { drawForeground } from "./foreground.mjs";
 
 import { videoHandTracker } from "./videoHandTracker.js";
 import { ClientStateSharing } from "./clientStateSharing.js";
@@ -2274,40 +2275,44 @@ let fl = 5;                                                          // CAMERA F
 
       // SPECIFY THE BLOBS FOR THE MODEL
    
-      for (let n = 0 ; n < S.length ; n++) {
-         M.save();
+      const drawShapes = foreground => {
+         for (let n = 0 ; n < S.length ; n++) {
+            if (!!S[n].foreground !== foreground) continue;
+            M.save();
 
-            let materialId = S[n].color;
-            let m = materials[materialId];
-
-            if (true) {
+               let materialId = S[n].color;
                let m = materials[materialId];
-               if (n == mn)
-                  m.texture = [.5,0,0,0];
-               M.save();
-               M.setValue(cg.mMultiply(vm, S[n].M));
-               let name = S[n].form + (S[n].rounded ? ',rounded' : '');
-               if (S[n].info) {
-                  name += ',' + S[n].info;
-                  if (! formMesh[name])
-                     setFormMesh(name,
-                        S[n].form == 'label'     ? createTextMesh(S[n].info)
-                      : S[n].form == 'particles' ? createParticlesMesh(S[n].info)
-                                                 : createMesh(64, 32, uvToForm,
-                                                   {
-                                                     form   : S[n].form,
-                                                     rounded: S[n].rounded,
-                                                     info   : S[n].info
-                                                   }));
-               }
-               draw(formMesh[name], materialId, null, null, null, S[n].texture, S[n].txtr, S[n].bumpTexture, S[n].bumptxtr, S[n].dull, S[n].flags, S[n].customShader, S[n].opacity, S[n].view);
-               M.restore();
-               if (m && m.texture)
-                  delete m.texture;
-            }
 
-         M.restore();
-      }
+               if (true) {
+                  let m = materials[materialId];
+                  if (n == mn)
+                     m.texture = [.5,0,0,0];
+                  M.save();
+                  M.setValue(cg.mMultiply(vm, S[n].M));
+                  let name = S[n].form + (S[n].rounded ? ',rounded' : '');
+                  if (S[n].info) {
+                     name += ',' + S[n].info;
+                     if (! formMesh[name])
+                        setFormMesh(name,
+                           S[n].form == 'label'     ? createTextMesh(S[n].info)
+                         : S[n].form == 'particles' ? createParticlesMesh(S[n].info)
+                                                    : createMesh(64, 32, uvToForm,
+                                                      {
+                                                        form   : S[n].form,
+                                                        rounded: S[n].rounded,
+                                                        info   : S[n].info
+                                                      }));
+                  }
+                  draw(formMesh[name], materialId, null, null, null, S[n].texture, S[n].txtr, S[n].bumpTexture, S[n].bumptxtr, S[n].dull, S[n].flags, S[n].customShader, S[n].opacity, S[n].view);
+                  M.restore();
+                  if (m && m.texture)
+                     delete m.texture;
+               }
+
+            M.restore();
+         }
+      };
+      drawShapes(false);
 
       // IF SHOWING JOINTS, MAKE BLOB MODEL MOTTLED AND TRANSPARENT
 
@@ -2319,6 +2324,10 @@ let fl = 5;                                                          // CAMERA F
       M.restore();
       setUniform('1f', 'uNoisy'  , 0);
       setUniform('1f', 'uOpacity', 1);
+
+      // Draw spatial UI after ordinary and implicit geometry, for both eyes.
+      if (S.some(shape => shape.foreground))
+         drawForeground(gl, () => drawShapes(true));
 
       vm  = viewMatrix;
       vmi = cg.mInverse(vm);
@@ -2483,6 +2492,7 @@ function Node(_form) {
          bevel: node._bevel,
          blend: node._blend,
          view: node._view,
+         foreground: node._foreground,
          blur: node._blur,
          opacity: node._opacity,
          color: node._color,
@@ -2545,6 +2555,7 @@ function Node(_form) {
       this._bevel    = false;
       this._blend    = false;
       this._view     = -1;
+      this._foreground = false;
       this._blur     = .5;
       this._opacity  = 1;
       this._children = [];
@@ -2595,6 +2606,7 @@ function Node(_form) {
       child._bevel  = null;
       child._blend  = null;
       child._view   = null;
+      child._foreground = null;
       child._blur   = null;
       child._opacity= null;
       child._color  = null;
@@ -2671,6 +2683,7 @@ function Node(_form) {
       this.dataTree.color = this._color;
       return this; 
    }
+   this.foreground = value => { this._foreground = !!value; return this; }
    this.view      = value   => { this._view = value;   return this; }
    this.blur      = value   => { this._blur = value;   return this; }
    this.opacity   = value   => { this._opacity = value;return this; }
@@ -3054,6 +3067,7 @@ function Node(_form) {
       else if (form) {
          let s = {
             view: this.prop('_view'),
+            foreground: this.prop('_foreground'),
             blur: this.prop('_blur'),
             opacity: this.prop('_opacity'),
             color: color,

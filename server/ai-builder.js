@@ -1,13 +1,16 @@
 "use strict";
 
 const os = require("os");
+const fs = require("fs");
 const path = require("path");
 const { spawn } = require("child_process");
 
-const MODEL = process.env.AI_BUILDER_MODEL || "opencode/mimo-v2.6-flash-free";
-const OPENCODE_BIN = process.env.OPENCODE_BIN || "opencode";
+const MODEL = process.env.AI_BUILDER_MODEL || "opencode/deepseek-v4.1-flash-free";
+const CURL_OPENCODE = path.join(os.homedir(), ".opencode", "bin", "opencode");
+const OPENCODE_BIN = process.env.OPENCODE_BIN || (fs.existsSync(CURL_OPENCODE) ? CURL_OPENCODE : "opencode");
 const OPENCODE_CONFIG_DIR = path.join(__dirname, "opencode-ai-builder");
 const REQUEST_TIMEOUT_MS = 75000;
+const CITY_TIMEOUT_MS = 180000;
 const MAX_OUTPUT_BYTES = 1024 * 1024;
 const MAX_OPERATIONS = 20;
 const MAX_ACTIONS = 128;
@@ -179,6 +182,8 @@ const parseOpenCodeEvents = output => {
       let event;
       try { event = JSON.parse(line); }
       catch (_) { continue; }
+      if (event && event.type === "error")
+         throw new Error(event.error?.message || "OpenCode provider returned an error");
       if (event && event.type === "text" && event.part && typeof event.part.text === "string")
          text += event.part.text;
    }
@@ -348,14 +353,20 @@ const validateAndExpandPlan = (plan, request) => {
    return { message: plan.message.trim(), actions };
 };
 
-const runOpenCode = prompt => new Promise((resolve, reject) => {
-   const args = ["run", "--format", "json", "-m", MODEL, prompt];
+const runOpenCode = (prompt, timeoutMs = REQUEST_TIMEOUT_MS, validateOutput = null, signal = null) => new Promise((resolve, reject) => {
+   const args = ["run", "--standalone", "--agent", "build", "--format", "json", "-m", MODEL, prompt];
+   const workingDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "ai-city-"));
    const child = spawn(OPENCODE_BIN, args, {
-      cwd: os.tmpdir(),
+      cwd: workingDirectory,
       env: {
          ...process.env,
          NO_COLOR: "1",
-         OPENCODE_CONFIG_DIR
+         OPENCODE_CONFIG: path.join(OPENCODE_CONFIG_DIR, "opencode.jsonc"),
+         OPENCODE_CONFIG_CONTENT: JSON.stringify({
+            permission: { "*": "ask" },
+            agent: { build: { permission: { "*": "ask" } } },
+            experimental: { policy: { permission: { "*": "ask" } } }
+         })
       },
       shell: false,
       stdio: ["ignore", "pipe", "pipe"]
@@ -380,63 +391,136 @@ const runOpenCode = prompt => new Promise((resolve, reject) => {
       reject(error);
    };
 
+   const onAbort = () => {
+      const error = new Error("Build request cancelled");
+      error.name = "AbortError";
+      terminate(error);
+   };
+   signal?.addEventListener("abort", onAbort, { once: true });
    const timeout = setTimeout(() => {
-      terminate(new Error(`OpenCode timed out after ${REQUEST_TIMEOUT_MS / 1000} seconds`));
-   }, REQUEST_TIMEOUT_MS);
+      terminate(new Error(`OpenCode timed out after ${timeoutMs / 1000} seconds`));
+   }, timeoutMs);
 
+   if (signal?.aborted) onAbort();
    child.stdout.on("data", chunk => {
+      if (finished) return;
       stdout += chunk.toString();
+      for (const line of stdout.split(/\r?\n/)) {
+         try {
+            const event = JSON.parse(line);
+            if (["permission.asked", "permission_updated", "tool_use"].includes(event.type)) {
+               terminate(new Error("The model requested a tool. City generation only accepts JSON; no tool permission was granted."));
+               return;
+            }
+         } catch (_) { /* An incomplete JSONL line is read with the next chunk. */ }
+      }
       if (Buffer.byteLength(stdout) > MAX_OUTPUT_BYTES) {
          terminate(new Error("OpenCode output exceeded the safety limit"));
+         return;
+      }
+      // A complete validated JSON result is sufficient; do not wait for CLI shutdown.
+      if (validateOutput) {
+         let plan;
+         try { plan=parseOpenCodeEvents(stdout); }
+         catch(error) {
+            // Incomplete JSON can still be streaming; explicit provider errors are final.
+            if(!error.isValidationError) terminate(error);
+            return;
+         }
+         try { validateOutput(plan); }
+         catch(error) { terminate(error); return; }
+         finish(null, stdout);
+         child.kill("SIGTERM");
+         forceKill = setTimeout(() => child.kill("SIGKILL"), 2000);
       }
    });
    child.stderr.on("data", chunk => {
       if (Buffer.byteLength(stderr) < 100000) stderr += chunk.toString();
    });
-   child.on("error", error => finish(new Error(
-      error.code === "ENOENT"
-         ? "OpenCode CLI was not found. Install it and ensure `opencode` is on the server PATH."
-         : `Unable to start OpenCode: ${error.message}`
-   )));
+   child.on("error", error => {
+      fs.rmSync(workingDirectory, { recursive: true, force: true });
+      finish(new Error(
+         error.code === "ENOENT"
+            ? "OpenCode CLI was not found. Install it and ensure `opencode` is on the server PATH."
+            : `Unable to start OpenCode: ${error.message}`
+      ));
+   });
    child.on("close", code => {
+      if (forceKill) clearTimeout(forceKill);
+      signal?.removeEventListener("abort", onAbort);
+      fs.rmSync(workingDirectory, { recursive: true, force: true });
       if (finished) return;
-      if (code !== 0) return finish(new Error(`OpenCode exited with code ${code}: ${stderr.trim().slice(-500)}`));
+      if (code !== 0) {
+         let providerError = "";
+         for (const line of stdout.split(/\r?\n/)) {
+            try { const e = JSON.parse(line); if (e.type === "error") providerError = e.error?.message || ""; } catch (_) {}
+         }
+         return finish(new Error(providerError || `OpenCode exited with code ${code}: ${stderr.trim().slice(-500)}`));
+      }
       finish(null, stdout);
    });
 });
 
-const generatePlan = async body => {
+const generatePlan = async (body, {signal = null} = {}) => {
    let request;
+   const city = body && body.mode === "city";
+   const preset = city && body.preset === true;
+   const cityTools = city ? await import("../js/util/ai-city.mjs") : null;
    try {
-      request = sanitizeRequest(body);
+      request = sanitizeRequest(city ? { ...body, anchor: [0,0,0], nearbyBlocks: [] } : body);
    } catch (error) {
       error.isRequestError = true;
       throw error;
    }
+   let target = null;
+   if (city && body.target != null) {
+      try {
+         if (preset) throw new Error("DEMO cannot edit a selection");
+         target = cityTools.validateObjectRecords([body.target])[0];
+      } catch (error) { error.isRequestError = true; throw error; }
+   }
+   const expand = plan => {
+      if (!city) return validateAndExpandPlan(plan, request);
+      if (target && (!Array.isArray(plan?.objects) || plan.objects.length !== 1)) {
+         const error = new Error("A local edit must return exactly one object");
+         error.isValidationError = true;
+         throw error;
+      }
+      return cityTools.expandCity(cityTools.constrainCityEdit(plan, target, request.instruction), {preset, ids:target ? [target.id] : null});
+   };
+   const instruction = target
+      ? `EDIT ONE SELECTED OBJECT. Original: ${JSON.stringify(target)}. Return exactly one complete object. Preserve its position, kind, dimensions, palette and roof unless the user explicitly changes them. Change only this selected object. User edit: ${request.instruction}`
+      : request.instruction;
    let correction = null;
    let lastError;
 
-   for (let attempt = 1; attempt <= 2; attempt++) {
+   for (let attempt = 1; attempt <= (city ? 1 : 2); attempt++) {
       try {
-         const output = await runOpenCode(buildPrompt(request, correction));
+         const output = await runOpenCode(
+            city ? cityTools.citySystemPrompt(instruction, {preset}) : buildPrompt(request, correction),
+            city ? CITY_TIMEOUT_MS : REQUEST_TIMEOUT_MS,
+            expand,
+            signal
+         );
          const plan = parseOpenCodeEvents(output);
-         const expanded = validateAndExpandPlan(plan, request);
+         const expanded = expand(plan);
          return {
             requestId: request.requestId,
             worldVersion: request.worldVersion,
             model: MODEL,
             attempts: attempt,
+            ...(city ? { objectCount: expanded.objectCount, objects:expanded.objects, targetId:target?.id || null } : {}),
             message: expanded.message,
             actions: expanded.actions
          };
       } catch (error) {
          lastError = error;
-         if (!error.isValidationError || attempt === 2) break;
+         if (!error.isValidationError || attempt === (city ? 1 : 2)) break;
          correction = { error: error.message };
       }
    }
    if (lastError && lastError.isValidationError) {
-      const error = new Error(`The model failed plan validation after two attempts: ${lastError.message}`);
+      const error = new Error(`The model failed plan validation after ${city ? "one city attempt" : "two attempts"}: ${lastError.message}`);
       error.isModelError = true;
       throw error;
    }

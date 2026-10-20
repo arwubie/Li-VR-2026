@@ -92,6 +92,8 @@ window.reloadCurrentScene = () => {
    // NOTE(KTR): re-adding the rapid development / live coding feature for whenever it's convenient. :)
    // enabled a flag "enableSceneReloading : true" set on the config object in scenes.js
    if (currentDemo != null) {
+      // Async production scenes must dispose requests before a manual module reload.
+      if (currentDemo.world?.reloadOnFocus === false) currentDemo.world.deinit?.();
       console.log("reloading: ", currentDemo.name, " with modificationCount: ", currentDemo.modificationCount);
       loadScene(currentDemo).then(() => {
          const prevIsValid = currentDemo.isValid;
@@ -213,7 +215,7 @@ const addDemoButtons = (demoNames, scenesInit) => {
             // or automatically reload if you exit and re-enter the window
 
             window.addEventListener("focus", (event) => { 
-               window.reloadCurrentScene();
+               if (currentDemo?.world?.reloadOnFocus !== false) window.reloadCurrentScene();
             }, false);
             // or eventually the server should just tell the application when a file has changed
             // TODO: 

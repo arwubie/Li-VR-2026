@@ -61,7 +61,12 @@ var port = process.argv[2] || 8000;
 var wsPort = process.argv[3] || 22346;
 
 // serve static files from main directory
-app.use(express.static("./"));
+app.use(express.static("./", {
+   // The legacy MIME table predates .mjs; browsers require a JavaScript MIME type.
+   setHeaders: function(res, filePath) {
+      if (filePath.endsWith(".mjs")) res.setHeader("Content-Type", "application/javascript");
+   }
+}));
 
 // handle uploaded files
 app.use(bodyParser.json());
@@ -653,14 +658,21 @@ app.route("/api/ai-builder").post(async function(req, res) {
 
    aiBuilderBusy = true;
    const startedAt = Date.now();
+   const controller = new AbortController();
+   const onClose = () => { if (!res.writableEnded) controller.abort(); };
+   res.on("close", onClose);
    try {
-      const result = await aiBuilder.generatePlan(req.body);
+      const result = await aiBuilder.generatePlan(req.body, {signal: controller.signal});
       console.log(
          `[AI Builder] request=${result.requestId} model=${result.model} ` +
          `actions=${result.actions.length} attempts=${result.attempts} durationMs=${Date.now() - startedAt}`
       );
       res.json(result);
    } catch (error) {
+      if (controller.signal.aborted) {
+         console.log(`[AI Builder] request cancelled after ${Date.now() - startedAt}ms`);
+         return;
+      }
       const status = error && error.isRequestError ? 400
                    : error && error.isModelError ? 502
                    : 500;
@@ -672,6 +684,7 @@ app.route("/api/ai-builder").post(async function(req, res) {
          details: error.message
       });
    } finally {
+      res.removeListener("close", onClose);
       aiBuilderBusy = false;
    }
 });

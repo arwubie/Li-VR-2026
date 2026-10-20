@@ -70,3 +70,8 @@ test("rejects plans that expand past the action limit", () => {
       }]
    }, request()), /128-action limit/);
 });
+
+
+test("surfaces provider errors instead of treating them as malformed city JSON", () => {
+   assert.throws(() => parseOpenCodeEvents(JSON.stringify({type:"error",error:{message:"Free tier rejected request"}})), /Free tier rejected/);
+});

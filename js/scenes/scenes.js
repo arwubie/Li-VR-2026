@@ -18,9 +18,10 @@ export default () => {
          { name: "construct"   , path: "./construct.js"   , public: true },
          { name: "hw3-musicStaff"  , path: "./hw3-collaborativeMusic.js", public: true },
          { name: "aiquery"   , path: "./aiquery.js"   , public: true },
-         { name: "ai-builder", path: "./ai-builder.js", public: true },
-         { name: "ai-builder-codex", path: "./ai-builder-codex.js", public: true },
+         { name: "hw5-ai-builder", path: "./hw5-ai-builder.js", public: true },
+         { name: "hw4-ai-builder-codex", path: "./hw4-ai-builder-codex.js", public: true },
          { name: "simon"    , path: "./simon.js"    , public: true },
+         { name: "hw5-SO101-annotations", path: "./hw5-SO101-annotations.js", public: true },
          { name: "SO101"      , path: "./SO101.js"      , public: true },
          { name: "SO101_parts", path: "./SO101_parts.js", public: true },
 

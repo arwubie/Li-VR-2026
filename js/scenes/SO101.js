@@ -95,8 +95,8 @@ export const init = async model => {
                                                   .color(mesh.color);
       }
 
-      let m = [0,0,0,0,0,0];
-//    let m = motion(model.time);
+//    let m = [0,0,0,0,0,0];
+      let m = motion(model.time);
 
       let i = 0;                                        // ANIMATE THE ROBOT
       for (let j of joints) {  
