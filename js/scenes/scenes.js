@@ -24,7 +24,9 @@ export default () => {
          { name: "hw5-SO101-annotations", path: "./hw5-SO101-annotations.js", public: true },
          { name: "SO101"      , path: "./SO101.js"      , public: true },
          { name: "SO101_parts", path: "./SO101_parts.js", public: true },
-
+         { name: "bouncing"   , path: "./bouncing.js"   , public: true },
+         { name: "widgets"    , path: "./widgets.js"    , public: true },
+      ]
       ]
    };
 }
