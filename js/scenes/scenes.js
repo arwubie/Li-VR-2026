@@ -25,8 +25,8 @@ export default () => {
          { name: "SO101"      , path: "./SO101.js"      , public: true },
          { name: "SO101_parts", path: "./SO101_parts.js", public: true },
          { name: "bouncing"   , path: "./bouncing.js"   , public: true },
+         { name: "hw6-bubble-room", path: "./hw6-bubble-room.js", public: true },
          { name: "widgets"    , path: "./widgets.js"    , public: true },
-      ]
       ]
    };
 }

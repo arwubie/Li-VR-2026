@@ -87,6 +87,25 @@ export function G2(do_not_animate_flag=false, canvasWidth=512, canvasHeight) {
                    ! mouseZ && mouseZPrev ? 'release' : mouseZ ? 'drag' : 'move';
       mouseZPrev = mouseZ;
 
+      handleWidgets();
+
+      if (txtrCanvas._animate || renderCount++ == 0) {
+         this.clear();
+         this.render();
+      }
+
+      return this.drawWidgets();
+   }
+
+   // Optional DOM-event input for scenes that must retain clicks between render frames.
+   // Such scenes draw with clear/render/drawWidgets instead of also polling update().
+   this.pointerEvent = state => {
+      if (! ['press', 'drag', 'release', 'move'].includes(state)) return;
+      mouseState = state;
+      handleWidgets();
+   }
+
+   let handleWidgets = () => {
       if (mouseState == 'press') {
          activeWidget = null;
          let nearestZ = 100000;
@@ -104,12 +123,6 @@ export function G2(do_not_animate_flag=false, canvasWidth=512, canvasHeight) {
       if (activeWidget && activeWidget.handleKeyEvent)
          activeWidget.handleKeyEvent();
 
-      if (txtrCanvas._animate || renderCount++ == 0) {
-         this.clear();
-         this.render();
-      }
-
-      return this.drawWidgets();
    }
 
    let renderCount = 0;
@@ -143,10 +156,15 @@ export function G2(do_not_animate_flag=false, canvasWidth=512, canvasHeight) {
       size = cg.def(size, 1);
       this.obj = obj;
       this.state = 0;
-      g2.textHeight(.09 * size);
-      let w = textWidth(label[0]) + .02 * size, h = .1 * size;
+      let w = 0, h = .1 * size;
+      let measure = () => {
+         g2.textHeight(.045 * size);
+         w = 2 * textWidth(Array.isArray(label) ? label[this.state] : label) + .02 * size;
+      };
+      measure();
       this.setLabel = str => label = str;
       this.isWithin = () => {
+         measure();
          let uvz = g2.getUVZ(obj);
          return uvz && uvz[0] > x-w/2 && uvz[0] < x+w/2 && uvz[1] > y-h/2 && uvz[1] < y+h/2;
       }
@@ -159,7 +177,7 @@ export function G2(do_not_animate_flag=false, canvasWidth=512, canvasHeight) {
          }
       }
       this.draw = () => {
-         w = textWidth(label[this.state]) + .02 * size;
+         measure();
          let isPressed = this == activeWidget && (mouseState == 'press' || mouseState == 'drag');
          g2.textHeight(.045 * size);
          g2.setColor(color, isPressed ? .5 : this.isWithin() ? .7 : 1);
@@ -185,7 +203,7 @@ export function G2(do_not_animate_flag=false, canvasWidth=512, canvasHeight) {
          let uvz = g2.getUVZ(obj);
          if (uvz) {
             value = Math.max(0, Math.min(1, (uvz[0] - (x-w/2)) / w));
-            if (action && mouseState == 'drag')
+            if (action && (mouseState == 'press' || mouseState == 'drag' || mouseState == 'release'))
                action(value);
          }
       }
