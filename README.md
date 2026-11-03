@@ -59,3 +59,8 @@ sh patch_fixed.sh
 6. Enable phase sync support (#webxr-phase-sync)
 7. Enable "Auto Enable Hands or Controllers" (Quest Settings (Gear Icon) -> Device -> Hands and Controllers)
 8. Enter the VR experience
+
+# Assignment 7: The Living Music Box
+
+Select **hw7-living-music-box** after starting the app. See the
+[launch, controls, scale/audio explanation, and verification guide](doc/living-music-box.md).
