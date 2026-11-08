@@ -28,6 +28,8 @@ export default () => {
          { name: "hw6-bubble-room", path: "./hw6-bubble-room.js", public: true },
          { name: "hw7-living-music-box", path: "./hw7-living-music-box.js", public: true },
          { name: "widgets"    , path: "./widgets.js"    , public: true },
+         { name: "minime"     , path: "./minime.js"     , public: true },
+
       ]
    };
 }
