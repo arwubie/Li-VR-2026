@@ -64,3 +64,11 @@ sh patch_fixed.sh
 
 Select **hw7-living-music-box** after starting the app. See the
 [launch, controls, scale/audio explanation, and verification guide](doc/living-music-box.md).
+
+# Assignment 8: Living Music Box - A Duet
+
+Select **hw8-music-box-duet** on a computer and one VR headset connected to the same server.
+The computer Conductor winds the gold key (hold **K**, or drag the key), then reads
+its private four-note sequence aloud. The VR Performer walks to and touches the bells.
+See the [play instructions, full cartoon avatar, synchronization and tests](doc/hw8-music-box-duet.md).
+The original **hw7-living-music-box** remains available separately.

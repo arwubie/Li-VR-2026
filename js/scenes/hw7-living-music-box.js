@@ -4,7 +4,7 @@ import { createMusicBoxAudio } from '../util/spatial-audio.js';
 import { MINI_SCALE, STAGE_RADIUS, TABLE_Y, SOURCES, boundStage, fillMusicLayer, fillBellStrike, segmentDistance } from '../util/living-music-box.mjs';
 
 let cleanup = null;
-export const init = async model => {
+export const initMusicBox = async (model, extension = {}) => {
    const world = model.add(), box = world.add(), keys = new Set();
    const gold = [.83, .62, .27], ivory = [1, .94, .83], pink = [.94, .58, .70];
    let miniature = false, inhabited = false, dead = false, held = null, last = performance.now(), switchDown = false;
@@ -43,8 +43,8 @@ export const init = async model => {
       const a = i * Math.PI / 14;
       shape(box, 'sphere', [.232 * Math.sin(a), .004, .232 * Math.cos(a)], [.006, .008, .006], ivory);
    }
-   shape(box, 'tubeX', [.264, -.032, 0], [.025, .006, .006], gold);
-   shape(box, 'torusX', [.285, -.032, 0], [.006, .019, .019], gold);
+   const windingAxle = shape(box, 'tubeX', [.264, -.032, 0], [.025, .006, .006], gold);
+   const windingKey = shape(box, 'torusX', [.285, -.032, 0], [.006, .019, .019], gold);
    label(box, 'THE LIVING MUSIC BOX', [0, -.035, .253], .010);
    const bells = SOURCES.map((source, i) => {
       const node = box.add().move(source.p);
@@ -123,8 +123,8 @@ export const init = async model => {
    }
    const hud = model.add();
    const title = label(hud, '', [0, 1.98, -1.1], .025);
-   label(hud, 'A / X: change scale | touch bell: strike | trigger: grab', [0, 1.91, -1.1], .016);
-   label(hud, 'Left stick: walk | B / Y near bell: layer on/off | 1-4: strike', [0, 1.85, -1.1], .016);
+   label(hud, extension.instructions?.[0] ?? 'A / X: change scale | touch bell: strike | trigger: grab', [0, 1.91, -1.1], .016);
+   label(hud, extension.instructions?.[1] ?? 'Left stick: walk | B / Y near bell: layer on/off | 1-4: strike', [0, 1.85, -1.1], .016);
 
    const rawHead = () => clay.pose?.transform?.matrix || clay.root().inverseViewMatrix(0);
    const head = () => cg.mMultiply(cg.mInverse(model.getGlobalMatrix()), rawHead());
@@ -188,12 +188,17 @@ export const init = async model => {
       delete itemHolds[hand];
       pulse(hand, .18, 40);
    };
-   const strike = (i, hand) => {
+   const playStrike = (i, hand) => {
       startAudio();
       audio?.position(i, cg.mTransform(box.getGlobalMatrix(), itemMatrices[i].slice(12, 15)));
       audio?.strike(i);
       pulses[i] = model.time; lastStrike[i] = model.time;
       if (hand) pulse(hand, .28, 45);
+   };
+   const strike = (i, hand, contact) => {
+      if (extension.onBell) {
+         if (extension.onBell(i, hand, contact)) lastStrike[i] = model.time;
+      } else playStrike(i, hand);
    };
    const layerButtons = { left: false, right: false };
    const updateTouch = () => {
@@ -205,7 +210,8 @@ export const init = async model => {
          const old = previousTip[hand]; previousTip[hand] = tip;
          const scale = miniature ? MINI_SCALE : 1;
          const radius = .027 + .014 * scale;
-         const canStrike = !held && !itemHolds[hand] && !buttonState[hand][0]?.pressed;
+         const canStrike = !held && !itemHolds[hand] && !buttonState[hand][0]?.pressed
+            && (!extension.canStrike || extension.canStrike(hand));
          for (let i = 0; i < SOURCES.length; i++) {
             const center = cg.mTransform(itemMatrices[i], [0, -.005, 0]);
             const gap = cg.distance(tip, center);
@@ -214,13 +220,16 @@ export const init = async model => {
             const swept = old && cg.distance(old, tip) < .35 * scale
                ? segmentDistance(center, old, tip) : gap;
             if (!touching[hand][i] && Math.min(gap, swept) < radius) {
-               if (canStrike && model.time - lastStrike[i] > .18) strike(i, hand);
+               if (canStrike && model.time - lastStrike[i] > .18) strike(i, hand, {
+                  tip, previousTip: old || tip,
+                  head: cg.mTransform(cg.mInverse(box.getGlobalMatrix()), rawHead().slice(12, 15)),
+               });
                touching[hand][i] = true;
             } else if (gap > radius + .008) touching[hand][i] = false;
          }
          // Separate, explicit music-layer control; it never competes with grabbing.
          const down = !!buttonState[hand][5]?.pressed;
-         if (down && !layerButtons[hand]) {
+         if (down && !layerButtons[hand] && (!extension.canLayer || extension.canLayer())) {
             let nearest = -1, distance = miniature ? .055 : .075;
             for (let i = 0; i < SOURCES.length; i++) {
                const gap = cg.distance(pose.slice(12, 15), itemMatrices[i].slice(12, 15));
@@ -233,8 +242,10 @@ export const init = async model => {
    };
    inputEvents.onPress = hand => {
       startAudio();
+      if (extension.canManipulate && !extension.canManipulate()) return;
       const pose = handPose(hand);
       if (!pose || itemHolds[hand] || held?.hand === hand) return;
+      if (extension.press?.(hand, pose)) return;
       const p = pose.slice(12, 15);
       let best = -1, distance = miniature ? .043 : .055;
       itemMatrices.forEach((m, i) => {
@@ -264,7 +275,8 @@ export const init = async model => {
       const k = e.key.toLowerCase(); keys.add(k);
       if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) e.preventDefault();
       if (e.repeat) return;
-      if (k === 'm') switchMode();
+      if (k === 'm' && !extension.lockScale) switchMode();
+      extension.key?.(k);
       if (k === ' ' || k === 'm') startAudio();
       if (miniature && /^[1-4]$/.test(k)) strike(Number(k) - 1);
    };
@@ -276,16 +288,38 @@ export const init = async model => {
    window.addEventListener('keydown', keydown);
    window.addEventListener('keyup', keyup);
    window.addEventListener('blur', blur);
+   const api = {
+      world, box, hud, title, body, face, hands, bells, windingAxle, windingKey,
+      pulse, strike, playStrike, startAudio,
+      cue(kind, i) { audio?.cue?.(kind, i); },
+      get boxMatrix() { return boxMatrix; },
+      get itemMatrices() { return itemMatrices; },
+      get feet() { return feet; },
+      get miniature() { return miniature; },
+      setMiniature(value) { if (miniature !== value) switchMode(); },
+      setBox(m) { boxMatrix = m.slice(); },
+      setItems(ms) { ms.forEach((m, i) => { itemMatrices[i] = m.slice(); }); },
+      resetFeet() {
+         const h = head(), floor = cg.mTransform(cg.mInverse(model.getGlobalMatrix()), [rawHead()[12], 0, rawHead()[14]]);
+         anchor = [h[12], floor[1], h[14]]; feet = [0, 0, .025]; present();
+      },
+      cancelGrabs() { held = null; for (const hand of Object.keys(itemHolds)) releaseItem(hand); },
+   };
+   extension.ready?.(api);
    present();
    model.animate(() => {
       if (dead) return;
       const now = performance.now(), dt = Math.min(.05, (now - last) / 1000); last = now;
+      extension.beforeFrame?.(api, dt);
       const pressed = !!(buttonState.right[4]?.pressed || buttonState.left[4]?.pressed);
-      if (pressed && !switchDown) { switchMode(); startAudio(); } switchDown = pressed;
+      if (pressed && !switchDown) {
+         if (!extension.lockScale) switchMode();
+         extension.action?.(); startAudio();
+      } switchDown = pressed;
       if (held && !miniature) {
          boxMatrix = cg.mMultiply(cg.mMultiply(cg.mInverse(model.getGlobalMatrix()), controllerMatrix[held.hand]), held.offset);
       }
-      if (!miniature && !window.vr) {
+      if (!miniature && !window.vr && (!extension.canManipulate || extension.canManipulate())) {
          boxMatrix[12] += ((keys.has('arrowright') ? 1 : 0) - (keys.has('arrowleft') ? 1 : 0)) * dt * .2;
          boxMatrix[14] += ((keys.has('arrowdown') ? 1 : 0) - (keys.has('arrowup') ? 1 : 0)) * dt * .2;
          if (keys.has('q') || keys.has('e')) boxMatrix = cg.mMultiply(boxMatrix, cg.mRotateY(((keys.has('q') ? 1 : 0) - (keys.has('e') ? 1 : 0)) * dt));
@@ -309,12 +343,15 @@ export const init = async model => {
          present();
          if (!inhabited) headLocal[13] = rawHead()[13] * MINI_SCALE;
       }
+      const remote = extension.avatar?.(api);
+      if (remote) { headLocal = remote.head; handLocal = remote.hands; }
       const p = headLocal.slice(12, 15), yaw = Math.atan2(-headLocal[8], -headLocal[10]) - Math.PI;
       body.identity().move(p[0], 0, p[2]).turnY(yaw).scale(MINI_SCALE);
       face.setMatrix(headLocal).scale(miniature ? 0 : MINI_SCALE / Math.hypot(headLocal[0], headLocal[1], headLocal[2]));
       for (const hand of ['left', 'right']) {
          const m = handLocal[hand];
-         hands[hand].setMatrix(m).scale(MINI_SCALE / Math.hypot(m[0], m[1], m[2]));
+         const basis = Math.hypot(m[0], m[1], m[2]);
+         hands[hand].setMatrix(m).scale(basis > 1e-8 ? MINI_SCALE / basis : 0);
       }
       for (const hand of Object.keys(itemHolds)) moveItem(hand);
       for (let i = 0; i < SOURCES.length; i++) {
@@ -332,6 +369,7 @@ export const init = async model => {
       audio?.listener(rawHead());
       updateTouch();
       title.info((miniature ? 'MINIATURE / 1:12' : 'HUMAN / TABLETOP') + '   -   ' + audioStatus);
+      extension.afterFrame?.(api, dt);
    });
    cleanup = () => {
       dead = true; audio?.dispose(); blur();
@@ -339,6 +377,8 @@ export const init = async model => {
       window.removeEventListener('keyup', keyup);
       window.removeEventListener('blur', blur);
       Object.assign(inputEvents, handlers); window.interactMode = oldMode;
+      extension.dispose?.();
    };
 };
+export const init = async model => initMusicBox(model);
 export const deinit = () => { cleanup?.(); cleanup = null; };

@@ -147,6 +147,19 @@ export function createMusicBoxAudio(layers, fillLayer, fillStrike) {
         player.connect(gain);
         return { spatial, gain, player, strikeBuffer };
     });
+    const impact = (buffer, index, strength = 1) => {
+        if (disposed || impacts.size >= 8 || !voices[index]) return;
+        const player = audioContext.createBufferSource(), gain = audioContext.createGain();
+        player.buffer = buffer;
+        gain.gain.value = Math.max(.5, Math.min(1.4, strength));
+        player.connect(gain);
+        gain.connect(voices[index].spatial.input);
+        const active = { player, gain };
+        impacts.add(active);
+        player.onended = () => { player.disconnect(); gain.disconnect(); impacts.delete(active); };
+        player.start(audioContext.currentTime + .005);
+    };
+    const cues = new Map();
     return {
         async start() {
             if (disposed) return false;
@@ -162,17 +175,24 @@ export function createMusicBoxAudio(layers, fillLayer, fillStrike) {
         listener(matrix) { if (!disposed) room.setListenerFromMatrix({ elements: matrix }); },
         position(i, p) { voices[i].spatial.setPosition(...p); },
         strike(i, strength = 1) {
-            if (disposed || !fillStrike || impacts.size >= 8) return;
-            const player = audioContext.createBufferSource(), gain = audioContext.createGain();
-            player.buffer = voices[i].strikeBuffer;
-            gain.gain.value = Math.max(.5, Math.min(1.4, strength));
-            player.connect(gain);
-            // Connect separately so muting a musical layer still allows striking it.
-            gain.connect(voices[i].spatial.input);
-            const impact = { player, gain };
-            impacts.add(impact);
-            player.onended = () => { player.disconnect(); gain.disconnect(); impacts.delete(impact); };
-            player.start(audioContext.currentTime + .005);
+            if (fillStrike && voices[i]) impact(voices[i].strikeBuffer, i, strength);
+        },
+        cue(kind, i = 0) {
+            if (disposed || !['correct', 'mistake', 'victory'].includes(kind)) return;
+            if (!cues.has(kind)) {
+                const duration = kind === 'victory' ? .7 : .22;
+                const buffer = audioContext.createBuffer(1, Math.round(audioContext.sampleRate * duration), audioContext.sampleRate);
+                const samples = buffer.getChannelData(0);
+                const frequencies = kind === 'victory' ? [523.25, 659.25, 783.99]
+                    : kind === 'mistake' ? [196, 207.65] : [880, 1108.73];
+                for (let n = 0; n < samples.length; n++) {
+                    const t = n / audioContext.sampleRate;
+                    const envelope = Math.min(1, t / .008) * Math.exp(-5 * t) * Math.min(1, (duration - t) / .04);
+                    samples[n] = .10 * envelope * frequencies.reduce((sum, f) => sum + Math.sin(2 * Math.PI * f * t), 0) / frequencies.length;
+                }
+                cues.set(kind, buffer);
+            }
+            impact(cues.get(kind), i);
         },
         enabled(i, on) {
             const param = voices[i].gain.gain;
