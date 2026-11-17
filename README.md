@@ -1,18 +1,21 @@
 # VR-2026-Spring
 
-Software for CSCI-GA.3033-​097 Virtual Reality 2026 Spring.
+Software for CSCI-GA.3033-097 Virtual Reality 2026 Spring.
 
 # How to setup the environment
 
 install Node.js and npm if you haven't. This project was tested using **Node v18.20.8**; if you run into issues, we recommend switching to this version.
 Then in the command line, do
+
 ```sh
 npm install
 cd server
 npm install
 source patch
 ```
+
 If source patch does not work, try
+
 ```sh
 sh patch_fixed.sh
 ```
@@ -32,7 +35,7 @@ sh patch_fixed.sh
 3. Go to chrome://flags/
 4. Search: ***"Insecure origins treated as secure"*** and enable the flag
 5. Add http://[your-computer's-ip-address]:2026 to the text box. For example http://10.19.127.1:2026
-7. Relaunch the browser on your VR headset and go to http://[your-computer's-ip-address]:2026 
+6. Relaunch the browser on your VR headset and go to http://[your-computer's-ip-address]:2026
 
 # How to debug in VR
 
@@ -46,8 +49,8 @@ sh patch_fixed.sh
 
 1. Go to the [scenes folder](https://github.com/futurerealitylab/VR-2026-Spring/tree/master/js/scenes/) and create a .js file based on the template of [shapes.js](https://github.com/futurerealitylab/VR-2026-Spring/tree/master/js/scenes/shapes.js)
 2. Change the name and the content of the demo to whatever you like!
-3. Go to [scenes.js](https://github.com/futurerealitylab/VR-2026-Spring/tree/master/js/scenes/scenes.js), add the name of your demo and its path to the returned value of [```scenes```](https://github.com/futurerealitylab/VR-2026-Spring/tree/master/js/scenes/scenes.js#L13)
-4. Note that the [```enableSceneReloading```](https://github.com/futurerealitylab/VR-2026-Spring/tree/master/js/scenes/scenes.js#L12) is set to true so that you can hot-reload the changes in your demo. 
+3. Go to [scenes.js](https://github.com/futurerealitylab/VR-2026-Spring/tree/master/js/scenes/scenes.js), add the name of your demo and its path to the returned value of [``scenes``](https://github.com/futurerealitylab/VR-2026-Spring/tree/master/js/scenes/scenes.js#L13)
+4. Note that the [``enableSceneReloading``](https://github.com/futurerealitylab/VR-2026-Spring/tree/master/js/scenes/scenes.js#L12) is set to true so that you can hot-reload the changes in your demo.
 
 # How to enable your hand-tracking
 
@@ -59,16 +62,3 @@ sh patch_fixed.sh
 6. Enable phase sync support (#webxr-phase-sync)
 7. Enable "Auto Enable Hands or Controllers" (Quest Settings (Gear Icon) -> Device -> Hands and Controllers)
 8. Enter the VR experience
-
-# Assignment 7: The Living Music Box
-
-Select **hw7-living-music-box** after starting the app. See the
-[launch, controls, scale/audio explanation, and verification guide](doc/living-music-box.md).
-
-# Assignment 8: Living Music Box - A Duet
-
-Select **hw8-music-box-duet** on a computer and one VR headset connected to the same server.
-The computer Conductor winds the gold key (hold **K**, or drag the key), then reads
-its private four-note sequence aloud. The VR Performer walks to and touches the bells.
-See the [play instructions, full cartoon avatar, synchronization and tests](doc/hw8-music-box-duet.md).
-The original **hw7-living-music-box** remains available separately.
